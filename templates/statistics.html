@@ -1,59 +1,145 @@
 {% extends 'base.html' %}
 
 {% block title %}
-Statistics - Finance Tracker
+统计分析 - 个人收支记账系统
 {% endblock %}
 
 {% block content %}
 <div class="container mt-4">
-    <!-- Total Expenses -->
-    <div class="card mb-4">
-        <div class="card-header">
-            Total Expenses
+    <div class="row">
+        <div class="col-md-4">
+            <div class="card mb-4">
+                <div class="card-header">收入总额</div>
+                <div class="card-body">
+                    <h5 class="card-title">¥{{ total_income }}</h5>
+                </div>
+            </div>
         </div>
+        <div class="col-md-4">
+            <div class="card mb-4">
+                <div class="card-header">支出总额</div>
+                <div class="card-body">
+                    <h5 class="card-title">¥{{ total_expense }}</h5>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card mb-4">
+                <div class="card-header">当前结余</div>
+                <div class="card-body">
+                    <h5 class="card-title">¥{{ balance }}</h5>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card mb-4">
+        <div class="card-header">按分类统计收支</div>
         <div class="card-body">
-            <h5 class="card-title">₹{{ total_expenses }}</h5>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>类型</th>
+                        <th>分类</th>
+                        <th>金额（¥）</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in category_totals %}
+                    <tr>
+                        <td>{{ row.type|zh_type }}</td>
+                        <td>{{ row.category|zh_category }}</td>
+                        <td>¥{{ row.total }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
         </div>
     </div>
 
-<!-- Expense Breakdown by Category -->
-<div class="card mb-4">
-    <div class="card-header">
-        Expense Breakdown by Category
-    </div>
-    <div class="card-body">
-        <table class="table">
-            <thead>
-                <tr>
-                    <th>Category</th>
-                    <th>Amount (₹)</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for category, amount in expense_by_category.items() %}
-                <tr>
-                    <td>{{ category }}</td>
-                    <td>₹{{ amount }}</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
-</div>
-
-
-    <!-- Top Spending Categories -->
     <div class="card mb-4">
-        <div class="card-header">
-            Top Spending Categories
-        </div>
+        <div class="card-header">支出最高的分类</div>
         <div class="card-body">
             <ul class="list-group">
-                {% for category, amount in top_spending_categories.items() %}
-                <li class="list-group-item">{{ category }}: ₹{{ amount }}</li>
+                {% for row in top_expense_categories %}
+                <li class="list-group-item">{{ row.category|zh_category }}：¥{{ row.total }}</li>
                 {% endfor %}
             </ul>
         </div>
     </div>
+
+    <div class="card mb-4">
+        <div class="card-header">智能月度分析</div>
+        <div class="card-body">
+            <button class="btn btn-primary" id="summaryButton" onclick="generateSummary()">生成月度消费分析</button>
+            <div id="summaryMessage" class="form-text mt-2">根据本月历史收支记录生成摘要、主要支出分类和节省建议。</div>
+            <div id="summaryResult" class="mt-3"></div>
+        </div>
+    </div>
 </div>
+
+<script>
+function renderSummary(analysis) {
+    const container = document.getElementById('summaryResult');
+    container.textContent = '';
+
+    const summary = document.createElement('div');
+    summary.className = 'alert alert-info';
+    summary.textContent = analysis.summary || '暂无摘要。';
+    container.appendChild(summary);
+
+    const topTitle = document.createElement('h6');
+    topTitle.textContent = '主要支出分类';
+    container.appendChild(topTitle);
+    const topList = document.createElement('ul');
+    const topItems = analysis.top_categories && analysis.top_categories.length ? analysis.top_categories : ['暂无数据'];
+    topItems.forEach(item => {
+        const li = document.createElement('li');
+        li.textContent = item;
+        topList.appendChild(li);
+    });
+    container.appendChild(topList);
+
+    const suggestionTitle = document.createElement('h6');
+    suggestionTitle.textContent = '节省建议';
+    container.appendChild(suggestionTitle);
+    const suggestionList = document.createElement('ul');
+    const suggestionItems = analysis.suggestions && analysis.suggestions.length ? analysis.suggestions : ['暂无建议'];
+    suggestionItems.forEach(item => {
+        const li = document.createElement('li');
+        li.textContent = item;
+        suggestionList.appendChild(li);
+    });
+    container.appendChild(suggestionList);
+}
+
+function generateSummary() {
+    const button = document.getElementById('summaryButton');
+    const message = document.getElementById('summaryMessage');
+    button.disabled = true;
+    button.textContent = '生成中...';
+    message.textContent = '正在调用 AI 分析，请稍候。';
+    message.className = 'form-text mt-2';
+
+    fetch('/ai/monthly_summary', {method: 'POST'})
+        .then(response => response.json())
+        .then(result => {
+            if (!result.ok) {
+                message.textContent = result.error || '生成失败，请稍后重试。';
+                message.className = 'text-danger mt-2';
+                return;
+            }
+            renderSummary(result.analysis);
+            message.textContent = '月度分析已生成。';
+        })
+        .catch(() => {
+            message.textContent = '请求失败，请检查服务状态。';
+            message.className = 'text-danger mt-2';
+        })
+        .finally(() => {
+            button.disabled = false;
+            button.textContent = '生成月度消费分析';
+        });
+}
+</script>
 {% endblock %}

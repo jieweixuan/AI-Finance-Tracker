@@ -1,91 +1,71 @@
-# Finance Tracker Flask App
+# 个人收支记账系统
 
-This Flask-based web application serves as a comprehensive finance tracker, enabling users to manage their expenses and income securely. It provides features for user registration, authentication, transaction management, and analytical insights into spending habits.
+基于 Python Flask、SQLite、HTML/CSS 的个人收支记录管理系统，支持日常记账、分类筛选、收支统计、AI 自然语言记账和月度消费分析。
 
-## Features
+## 功能
 
-- **User Authentication**: Secure registration and login functionality.
-- **Transaction Management**: Add, delete, and view expense and income transactions.
-- **Analytics**: Insights into spending patterns by payment method and category.
-- **Responsive Interface**: User-friendly design for easy navigation and interaction.
+- 用户注册、登录、退出
+- 收入/支出记录新增、删除、列表查看
+- 按类型、分类、日期范围筛选
+- CSV 导出
+- 收入总额、支出总额、结余、分类统计
+- DeepSeek API 自然语言记账识别
+- DeepSeek API 月度消费分析
 
-## Live Preview
+## 本地运行
 
-<a href="https://0xramm.pythonanywhere.com/" target="_blank">Finance-Tracker-Live-Preview</a>
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe app.py
+```
 
+打开：
 
+```text
+http://127.0.0.1:5000/login
+```
 
+## 环境变量
 
-## Screenshots
+不要把真实密钥写入代码或提交到 GitHub。复制 `.env.example` 的字段到你的部署平台环境变量中。
 
-<!-- Add screenshots of your application here -->
-#### Login Page
-![Login Page](screenshots/login.png)
-#### Registration Page
-![Registration Page](screenshots/registration.png)
-#### Dashboard
-![Dashboard](screenshots/dashboard.png)
-#### Transaction_page
-![Transaction_page](screenshots/transactions.png)
-#### Add Transaction Popup
-![Add Transaction Popup](screenshots/add_transaction.png)
-#### Statistics page
-![Statistics page](screenshots/statistics.png)
+必填：
 
+```text
+SECRET_KEY=替换为随机长字符串
+DEEPSEEK_API_KEY=你的 DeepSeek API Key
+```
 
+可选：
 
+```text
+DEEPSEEK_BASE_URL=https://api.deepseek.com
+DEEPSEEK_MODEL=deepseek-v4-flash
+DEEPSEEK_TIMEOUT=20
+DATABASE_PATH=finance_tracker.db
+FLASK_DEBUG=0
+```
 
-## Installation
+## 部署
 
-1. Clone the repository:
+项目包含两类部署配置：
 
-   ```bash
-   git clone https://github.com/0xramm/Finance-Tracker.git
-   ```
+- `vercel.json` + `api/index.py`：用于 Vercel Python Serverless 部署。
+- `Procfile` + `runtime.txt`：用于 Render/Railway 等支持 Gunicorn 的 Python 平台。
 
-2. Navigate to the project directory:
+注意：SQLite 在 Serverless 平台上通常不是持久化存储。Vercel 部署时默认使用临时目录数据库，适合课程演示，不适合正式长期保存数据。正式上线建议换成托管数据库。
 
-   ```bash
-   cd Finance-Tracker
-   ```
+## 安全说明
 
-3. Install dependencies:
+- Flask `SECRET_KEY` 从环境变量读取。
+- 用户密码使用 Werkzeug 哈希保存，旧明文密码会在启动时自动迁移为哈希。
+- 表单写操作加入 CSRF token。
+- 删除记录限定当前登录用户。
+- 默认关闭 Flask debug。
+- 响应添加基础安全头。
+- `.gitignore` 排除 `.env`、本地 SQLite 数据库、虚拟环境和缓存文件。
 
-   ```bash
-   pip install -r requirements.txt
-   ```
+## 文档
 
-## Usage
-
-1. Initialize the SQLite database:
-
-   ```bash
-   python app.py
-   ```
-
-2. Open the application in your web browser:
-
-   ```
-   http://localhost:5000/
-   ```
-
-## Contributing
-
-Contributions are welcome! If you'd like to contribute to this project, please follow these steps:
-
-1. Fork the repository.
-2. Create a new branch (`git checkout -b feature/your_feature_name`).
-3. Make your changes.
-4. Commit your changes (`git commit -am 'Add some feature'`).
-5. Push to the branch (`git push origin feature/your_feature_name`).
-6. Create a new pull request.
-
-## License
-
-This project is licensed under the [MIT License](LICENSE).
-
-## Acknowledgements
-
-- [Flask](https://flask.palletsprojects.com/): Web framework for Python.
-- [SQLite](https://www.sqlite.org/): Lightweight, serverless database engine.
-- [Chart.js](https://www.chartjs.org/): JavaScript library for data visualization.
+详细使用说明见 [USER_MANUAL.md](USER_MANUAL.md)。
