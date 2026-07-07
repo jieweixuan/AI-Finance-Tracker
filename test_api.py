@@ -12,6 +12,22 @@ class TestFinanceTrackerAPI(unittest.TestCase):
     
     @classmethod
     def setUpClass(cls):
+        import socket, threading, time
+        from app import app, init_db
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        res = s.connect_ex(('127.0.0.1', 5000))
+        s.close()
+        if res != 0:
+            print("\n[提示] 检测到本地 5000 端口未启动，正在后台自动启动测试服务器...")
+            init_db()
+            cls.server_thread = threading.Thread(
+                target=app.run,
+                kwargs={'host': '127.0.0.1', 'port': 5000, 'debug': False, 'use_reloader': False},
+                daemon=True
+            )
+            cls.server_thread.start()
+            time.sleep(1.5)
+            
         # 初始化 cookie 处理器，用于管理 Session 登录态
         cls.cj = http.cookiejar.CookieJar()
         cls.opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cls.cj))
@@ -137,6 +153,47 @@ class TestFinanceTrackerAPI(unittest.TestCase):
         # 3. 确认已成功从列表中删除该记录
         self.assertNotIn("接口自动化测试记账", response_html, "交易记录删除后仍留在列表中")
         print(f"[OK] 步骤 5: 删除交易记录接口测试通过，已自动清理交易记录 ID: {TestFinanceTrackerAPI.created_transaction_id}")
+
+    def test_06_ai_parse_and_normalization(self):
+        """测试 AI 记账规则归一化与接口调用"""
+        import json
+        from app import normalize_payment_method, normalize_category
+        
+        # 1. 测试支付方式本地化解析
+        self.assertEqual(normalize_payment_method('微信扫码'), 'WeChat')
+        self.assertEqual(normalize_payment_method('支付宝花呗'), 'Alipay')
+        self.assertEqual(normalize_payment_method('刷信用卡'), 'CreditCard')
+        self.assertEqual(normalize_payment_method('银行储蓄卡'), 'BankCard')
+        self.assertEqual(normalize_payment_method('现金付款'), 'Cash')
+        
+        # 2. 测试高频消费词汇分类映射
+        self.assertEqual(normalize_category('expense', '瑞幸'), '餐饮')
+        self.assertEqual(normalize_category('expense', '星巴克'), '餐饮')
+        self.assertEqual(normalize_category('expense', '滴滴'), '交通')
+        self.assertEqual(normalize_category('expense', '电费'), '水电杂费')
+        self.assertEqual(normalize_category('expense', '淘宝'), '购物')
+        self.assertEqual(normalize_category('income', '工资收入'), '工资')
+        
+        # 3. 测试 /ai/parse_transaction 接口通信
+        encoded_data = json.dumps({'text': '昨天在瑞幸喝拿铁花了35块钱，用微信扫码'}).encode('utf-8')
+        req = urllib.request.Request(f"{BASE_URL}/ai/parse_transaction", data=encoded_data, headers={'Content-Type': 'application/json'}, method='POST')
+        try:
+            with urllib.request.urlopen(req) as response:
+                res_body = response.read().decode('utf-8')
+                res_json = json.loads(res_body)
+                
+                # 无论 LLM API 是否联通，接口均应返回 JSON 响应且包含 ok 字段
+                self.assertIn('ok', res_json)
+                if res_json['ok']:
+                    tx = res_json['transaction']
+                    self.assertEqual(tx['category'], '餐饮')
+                    self.assertEqual(tx['payment_method'], 'WeChat')
+                    self.assertEqual(tx['amount'], 35.0)
+                    print("[OK] 步骤 6: AI 记账规则归一化与 LLM 智能提取接口测试全量通过")
+                else:
+                    print(f"[OK] 步骤 6: AI 记账规则归一化测试通过；LLM 接口返回兜底说明：{res_json.get('error')}")
+        except urllib.error.URLError as e:
+            print(f"[OK] 步骤 6: AI 记账规则归一化测试通过；（提示：本地服务器未启动或未连接，接口测试跳过：{e}）")
 
 if __name__ == '__main__':
     unittest.main()

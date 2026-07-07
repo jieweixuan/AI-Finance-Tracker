@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 import json
 import os
 import re
@@ -50,27 +50,52 @@ LEGACY_CATEGORY_LABELS = {
 }
 
 PAYMENT_METHOD_LABELS = {
-    'UPI': 'UPI 电子支付',
+    'WeChat': '微信支付',
+    'Alipay': '支付宝',
+    'CreditCard': '信用卡',
+    'BankCard': '银行卡/储蓄卡',
     'Cash': '现金',
+}
+
+LEGACY_PAYMENT_LABELS = {
+    'UPI': 'UPI 电子支付',
 }
 
 HASH_PREFIXES = ('scrypt:', 'pbkdf2:', 'argon2:')
 
 CATEGORY_ALIASES = {
-    '早餐': '餐饮',
-    '午餐': '餐饮',
-    '晚餐': '餐饮',
-    '餐费': '餐饮',
-    '吃饭': '餐饮',
-    '咖啡': '餐饮',
-    '奶茶': '餐饮',
-    '打车': '交通',
-    '出租车': '交通',
-    '公交': '交通',
-    '地铁': '交通',
-    '车费': '交通',
-    '工资收入': '工资',
-    '薪资': '工资',
+    # 餐饮
+    '早餐': '餐饮', '午餐': '餐饮', '晚餐': '餐饮', '餐费': '餐饮', '吃饭': '餐饮',
+    '咖啡': '餐饮', '奶茶': '餐饮', '星巴克': '餐饮', '瑞幸': '餐饮', '麦当劳': '餐饮',
+    '肯德基': '餐饮', '外卖': '餐饮', '买菜': '餐饮', '超市': '餐饮', '零食': '餐饮',
+    '水果': '餐饮', '宵夜': '餐饮', '聚餐': '餐饮', '火锅': '餐饮', '喜茶': '餐饮',
+    '饿了么': '餐饮', '美团外卖': '餐饮', '早饭': '餐饮', '午饭': '餐饮', '晚饭': '餐饮',
+    # 交通
+    '打车': '交通', '出租车': '交通', '公交': '交通', '地铁': '交通', '车费': '交通',
+    '滴滴': '交通', '高铁': '交通', '火车': '交通', '机票': '交通', '加油': '交通',
+    '油费': '交通', '停车': '交通', '停车费': '交通', '打车费': '交通', '过路费': '交通',
+    '网约车': '交通', '曹操': '交通', 'T3': '交通', '单车': '交通',
+    # 购物
+    '淘宝': '购物', '京东': '购物', '网购': '购物', '衣服': '购物', '买衣服': '购物',
+    '鞋子': '购物', '包包': '购物', '拼多多': '购物', '天猫': '购物', '日用品': '购物',
+    '日用': '购物', '护肤': '购物', '化妆品': '购物', '百货': '购物', '电子产品': '购物',
+    # 居住
+    '房租': '居住', '租金': '居住', '房贷': '居住', '物业': '居住', '物业费': '居住',
+    # 水电杂费
+    '电费': '水电杂费', '水费': '水电杂费', '话费': '水电杂费', '宽带': '水电杂费',
+    '燃气': '水电杂费', '天然气': '水电杂费', '交话费': '水电杂费', '网费': '水电杂费',
+    '手机费': '水电杂费', '杂费': '水电杂费',
+    # 娱乐 & 旅行
+    '电影': '娱乐', '看电影': '娱乐', '游戏': '娱乐', '充值': '娱乐', 'KTV': '娱乐',
+    '唱歌': '娱乐', '演出': '娱乐', '门票': '娱乐', '旅游': '旅行', '度假': '旅行',
+    # 医疗 & 教育
+    '看病': '医疗', '药': '医疗', '买药': '医疗', '挂号': '医疗', '体检': '医疗',
+    '书': '教育', '买书': '教育', '课程': '教育', '学费': '教育', '培训': '教育',
+    # 收入别名
+    '工资收入': '工资', '薪资': '工资', '发工资': '工资', '薪水': '工资', '月薪': '工资',
+    '理财收益': '理财', '利息': '理财', '股票': '理财', '基金': '理财', '分红': '理财',
+    '发奖金': '奖金', '年终奖': '奖金', '收报销': '报销', '报销款': '报销', '到账': '其他收入',
+    '转账': '其他收入', '收红包': '其他收入', '红包': '其他收入',
 }
 
 
@@ -132,7 +157,10 @@ def zh_category(value):
 
 @app.template_filter('zh_payment_method')
 def zh_payment_method(value):
-    return PAYMENT_METHOD_LABELS.get(value, value)
+    label = PAYMENT_METHOD_LABELS.get(value)
+    if not label:
+        label = LEGACY_PAYMENT_LABELS.get(value, value)
+    return label
 
 
 @app.template_filter('zh_type')
@@ -215,13 +243,26 @@ def normalize_category(transaction_type, value):
 
 
 def normalize_payment_method(value):
-    if value in PAYMENT_METHOD_LABELS:
+    if not value:
+        return None
+    if value in PAYMENT_METHOD_LABELS or value in LEGACY_PAYMENT_LABELS:
         return value
     for key, label in PAYMENT_METHOD_LABELS.items():
-        if value == label or value == label.replace(' ', ''):
+        if value == label or value == label.replace(' ', '') or value in label:
             return key
-    if value in ('现金支付', '现金付款'):
+    val_lower = str(value).lower()
+    if any(k in val_lower for k in ('微信', 'wechat', 'vx', 'v信', '绿泡泡')):
+        return 'WeChat'
+    if any(k in val_lower for k in ('支', 'alipay', 'zfb', '花呗')):
+        return 'Alipay'
+    if any(k in val_lower for k in ('信用', '贷记', 'credit')):
+        return 'CreditCard'
+    if any(k in val_lower for k in ('储蓄', '银行', '借记', '卡', '转账', 'bank')):
+        return 'BankCard'
+    if any(k in val_lower for k in ('现金', '纸币', '钞', 'cash')):
         return 'Cash'
+    if value == 'UPI' or 'upi' in val_lower:
+        return 'UPI'
     return None
 
 
@@ -372,18 +413,81 @@ def summary_schema():
 
 
 def parse_transaction_with_llm(text):
-    today = date.today().strftime('%Y-%m-%d')
+    today_dt = date.today()
+    today_str = today_dt.strftime('%Y-%m-%d')
+    yesterday_str = (today_dt - timedelta(days=1)).strftime('%Y-%m-%d')
+    day_before_str = (today_dt - timedelta(days=2)).strftime('%Y-%m-%d')
+    weekdays = ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"]
+    weekday_str = weekdays[today_dt.weekday()]
+
+    system_prompt = f"""你是专业、高精准的个人收支记账 AI 识别引擎。你负责分析用户输入的自然语言描述，提取准确的财务交易字段，并严格输出合法的 JSON 对象。
+
+### 【时间维度准则】
+1. 今天是 {today_str}（{weekday_str}）。
+2. 相对日期推算规范：
+   - "昨天" = {yesterday_str}；"前天" = {day_before_str}；"大前天" = 减3天；"明天" = 加1天（如预期支出）。
+   - "上周X"：从今天向过去推算最近的那个星期X；"前几天"/"几天前"：默认推算为 {day_before_str}；如果无法确定具体日期，默认使用今天日期 "{today_str}"。
+3. 日期必须输出严格的 YYYY-MM-DD 格式。
+
+### 【收支类型 (type) 判断准则】
+- expense（支出）：花钱、消费、购买、缴费、付款、发出去的钱、转账给他人。
+- income（收入）：工资、兼职、到账、奖金、报销款、理财收益、收红包、别人转给我。
+
+### 【分类 (category) 语义指导】
+必须严格从枚举中选择最贴切的分类：
+- 餐饮：在外吃饭、外卖、星巴克/瑞幸/咖啡、奶茶、买菜、水果、超市食品、零食、火锅、聚餐。
+- 交通：打车、滴滴、地铁、公交、高铁、机票、加油、油费、停车费、过路费、打车费。
+- 购物：淘宝/京东/拼多多等网购、衣服、鞋包、日用百货、化妆品、电子产品。
+- 居住：房租、租金、房贷、物业费。
+- 水电杂费：电费、水费、话费、宽带费、天然气费、交话费、充值话费。
+- 娱乐：电影、游戏、演出、门票、KTV。
+- 医疗：看病、买药、体检、挂号。
+- 教育：买书、课程、培训、学费。
+- 旅行：旅游、酒店、度假。
+- 工资：工资收入、薪资、发薪水、月薪。
+- 奖金：年终奖、奖金、绩效奖。
+- 理财：理财收益、股票、基金分红、利息。
+- 报销：发票报销、公司报销到账。
+- 其他支出 / 其他收入：如果不属于以上分类，选此项。
+
+### 【支付方式 (payment_method) 推断准则】
+必须选自枚举：WeChat, Alipay, CreditCard, BankCard, Cash。
+1. 关键词对应：
+   - 微信 / V信 / vx / 绿泡泡 -> WeChat
+   - 支付宝 / 支 / 花呗 / 余额宝 -> Alipay
+   - 信用卡 / 贷记卡 / 刷卡 -> CreditCard
+   - 银行卡 / 储蓄卡 / 借记卡 / 转账 -> BankCard
+   - 现金 / 纸币 -> Cash
+2. **兜底推断**：如果用户语句中完全没有提及支付方式，默认填入 WeChat（微信支付）或 Alipay（支付宝），绝不可为空或留空！
+
+### 【金额与备注】
+- amount：必须为正浮点数（如 28.0, 35.5）。如果提到“两百/俩百”->200.0，“两块五”->2.5，“三十八”->38.0。
+- description：简炼总结交易内容（如“瑞幸生椰拿铁”、“打车去公司”、“交本月房租”），保留用户的核心消费细节。
+- confidence：0.0 到 1.0 之间的置信度评分。
+- missing_fields：如果某个必填要素用户表达极其模糊或无法确定，将该字段名加入数组。
+
+### 【Few-Shot 典型示例】
+示例 1（品牌咖啡 + 昨天 + 微信）：
+输入："昨天中午跟同事在瑞幸买了三杯生椰拿铁，花了我58块钱，用微信付款的"
+输出：{{"date": "{yesterday_str}", "type": "expense", "category": "餐饮", "amount": 58.0, "payment_method": "WeChat", "description": "瑞幸生椰拿铁", "confidence": 0.98, "missing_fields": []}}
+
+示例 2（发票报销进账 + 前天 + 支付宝）：
+输入："前天打车去客户公司，今天发票报销到账了145元，存到支付宝了"
+输出：{{"date": "{day_before_str}", "type": "income", "category": "报销", "amount": 145.0, "payment_method": "Alipay", "description": "发票报销到账", "confidence": 0.95, "missing_fields": []}}
+
+示例 3（水电话费 + 模糊支付兜底）：
+输入："交了个季度的宽带费和电费一共480块"
+输出：{{"date": "{today_str}", "type": "expense", "category": "水电杂费", "amount": 480.0, "payment_method": "WeChat", "description": "交季度宽带费和电费", "confidence": 0.9, "missing_fields": []}}
+
+示例 4（网购日用品 + 信用卡）：
+输入："晚上在淘宝上买了一堆纸巾和洗衣液，刷信用卡218.5元"
+输出：{{"date": "{today_str}", "type": "expense", "category": "购物", "amount": 218.5, "payment_method": "CreditCard", "description": "淘宝买纸巾和洗衣液", "confidence": 0.96, "missing_fields": []}}
+
+示例 5（发工资 + 银行卡）：
+输入："7月份工资到账12500元，直接进储蓄卡了"
+输出：{{"date": "{today_str}", "type": "income", "category": "工资", "amount": 12500.0, "payment_method": "BankCard", "description": "7月份工资到账", "confidence": 0.99, "missing_fields": []}}"""
     messages = [
-        {
-            'role': 'system',
-            'content': (
-                '你是个人收支记账助手。只从用户文本中提取记账字段，必须返回 json 对象。'
-                f'今天日期是 {today}。分类必须从给定枚举中选择；无法确定时选择最接近的分类，'
-                '并在 missing_fields 中说明需要用户确认的字段。金额必须是正数；type 只能是 income 或 expense。'
-                '示例 json：{"date":"2026-07-06","type":"expense","category":"餐饮","amount":28,'
-                '"payment_method":"Cash","description":"午餐","confidence":0.9,"missing_fields":[]}'
-            ),
-        },
+        {'role': 'system', 'content': system_prompt},
         {'role': 'user', 'content': text},
     ]
     result, error = post_chat_completion(messages, transaction_schema(), 'transaction_parse')
@@ -395,7 +499,7 @@ def parse_transaction_with_llm(text):
         'type': result.get('type'),
         'category': result.get('category'),
         'amount': result.get('amount'),
-        'payment_method': result.get('payment_method') or 'Cash',
+        'payment_method': result.get('payment_method') or 'WeChat',
         'description': result.get('description') or text,
     }
     normalized, errors = validate_transaction_payload(payload)
