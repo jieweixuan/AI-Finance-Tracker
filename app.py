@@ -749,6 +749,76 @@ def delete_transaction(transaction_id):
     return redirect(url_for('transactions'))
 
 
+@app.route('/get_transaction/<int:transaction_id>')
+def get_transaction(transaction_id):
+    """获取指定交易记录的 JSON 数据（用于编辑回填）"""
+    if not is_logged_in():
+        return jsonify({'ok': False, 'error': '请先登录。'}), 401
+
+    conn = get_db()
+    row = conn.execute(
+        'SELECT * FROM transactions WHERE id = ? AND user_id = ?',
+        (transaction_id, session['user_id']),
+    ).fetchone()
+    conn.close()
+
+    if not row:
+        return jsonify({'ok': False, 'error': '未找到该交易记录。'}), 404
+
+    return jsonify({'ok': True, 'transaction': row_to_dict(row)})
+
+
+@app.route('/edit_transaction/<int:transaction_id>', methods=['POST'])
+def edit_transaction(transaction_id):
+    """编辑已有的交易记录"""
+    if not is_logged_in():
+        return redirect(url_for('login'))
+    if not validate_csrf():
+        flash('表单已过期，请刷新页面后重试。', 'error')
+        return redirect(url_for('transactions'))
+
+    # 先确认该记录存在且属于当前用户
+    conn = get_db()
+    existing = conn.execute(
+        'SELECT id FROM transactions WHERE id = ? AND user_id = ?',
+        (transaction_id, session['user_id']),
+    ).fetchone()
+    if not existing:
+        conn.close()
+        flash('未找到该交易记录或无权修改。', 'error')
+        return redirect(url_for('transactions'))
+
+    # 复用已有的验证与归一化逻辑
+    normalized, errors = validate_transaction_payload(request.form)
+    if errors:
+        for error in errors:
+            flash(error, 'error')
+        conn.close()
+        return redirect(url_for('transactions'))
+
+    conn.execute(
+        '''
+        UPDATE transactions
+        SET amount = ?, type = ?, category = ?, date = ?, description = ?, payment_method = ?
+        WHERE id = ? AND user_id = ?
+        ''',
+        (
+            normalized['amount'],
+            normalized['type'],
+            normalized['category'],
+            normalized['date'],
+            normalized['description'],
+            normalized['payment_method'],
+            transaction_id,
+            session['user_id'],
+        ),
+    )
+    conn.commit()
+    conn.close()
+    flash('交易记录已更新。', 'success')
+    return redirect(url_for('transactions'))
+
+
 @app.route('/daily_spending_data')
 def daily_spending_data():
     if not is_logged_in():

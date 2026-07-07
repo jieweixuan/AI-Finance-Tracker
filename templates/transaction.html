@@ -162,7 +162,8 @@
                 </td>
                 <td><span class="text-secondary"><i class="fa-solid fa-credit-card me-1 text-primary"></i>{{ transaction.payment_method|zh_payment_method }}</span></td>
                 <td>{{ transaction.description or '-' }}</td>
-                <td class="text-center">
+                <td class="text-center" style="white-space: nowrap;">
+                    <button class="btn btn-primary btn-sm px-3 me-1" onclick='openEditPopup({{ transaction|tojson }})' title="编辑记录"><i class="fas fa-edit"></i></button>
                     <form action="{{ url_for('delete_transaction', transaction_id=transaction.id) }}" method="post" class="d-inline">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <button type="submit" class="btn btn-danger btn-sm px-3" onclick="return confirm('确定要删除这笔记录吗？')" title="删除记录"><i class="fas fa-trash-alt"></i></button>
@@ -185,9 +186,10 @@
 <div id="popup" class="popup">
     <div class="popup-content">
         <span class="close" onclick="closePopup()">&times;</span>
-        <h4 class="mb-4 fw-bold gradient-text"><i class="fa-solid fa-pen-to-square me-2"></i>记录新笔收支</h4>
-        <form action="{{ url_for('add_transaction') }}" method="post">
+        <h4 id="popupTitle" class="mb-4 fw-bold gradient-text"><i class="fa-solid fa-pen-to-square me-2"></i>记录新笔收支</h4>
+        <form id="txForm" action="{{ url_for('add_transaction') }}" method="post">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" id="edit_id" name="edit_id" value="">
             <div class="row g-3">
                 <div class="col-md-6 mb-3">
                     <label for="type" class="form-label">收支类型</label>
@@ -225,7 +227,7 @@
                 <textarea id="notes" name="notes" class="form-control" rows="3" placeholder="填写简单的备注或去向说明..."></textarea>
             </div>
             <div class="d-grid">
-                <button type="submit" class="btn btn-primary py-3 fs-6"><i class="fa-solid fa-check me-2"></i>立即保存</button>
+                <button type="submit" id="popupSubmitBtn" class="btn btn-primary py-3 fs-6"><i class="fa-solid fa-check me-2"></i>立即保存</button>
             </div>
         </form>
     </div>
@@ -278,6 +280,38 @@ function openPopup() {
 
 function closePopup() {
     document.getElementById('popup').style.display = 'none';
+    // 重置为新增模式
+    resetToAddMode();
+}
+
+function resetToAddMode() {
+    document.getElementById('edit_id').value = '';
+    document.getElementById('txForm').action = '{{ url_for("add_transaction") }}';
+    document.getElementById('popupTitle').innerHTML = '<i class="fa-solid fa-pen-to-square me-2"></i>记录新笔收支';
+    document.getElementById('popupSubmitBtn').innerHTML = '<i class="fa-solid fa-check me-2"></i>立即保存';
+    // 清空表单字段
+    document.getElementById('type').value = 'expense';
+    fillFormCategorySelect();
+    document.getElementById('date').value = '';
+    document.getElementById('amount').value = '';
+    document.getElementById('payment_method').selectedIndex = 0;
+    document.getElementById('notes').value = '';
+}
+
+function openEditPopup(tx) {
+    // 设置为编辑模式
+    document.getElementById('edit_id').value = tx.id;
+    document.getElementById('txForm').action = '/edit_transaction/' + tx.id;
+    document.getElementById('popupTitle').innerHTML = '<i class="fa-solid fa-pen-to-square me-2"></i>编辑交易记录';
+    document.getElementById('popupSubmitBtn').innerHTML = '<i class="fa-solid fa-check me-2"></i>确认修改';
+    // 回填所有字段
+    document.getElementById('type').value = tx.type;
+    fillFormCategorySelect(tx.category);
+    document.getElementById('date').value = tx.date;
+    document.getElementById('amount').value = tx.amount;
+    document.getElementById('payment_method').value = tx.payment_method;
+    document.getElementById('notes').value = tx.description || '';
+    openPopup();
 }
 
 function setAiMessage(text, isError = false) {

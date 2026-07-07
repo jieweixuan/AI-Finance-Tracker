@@ -195,5 +195,87 @@ class TestFinanceTrackerAPI(unittest.TestCase):
         except urllib.error.URLError as e:
             print(f"[OK] 步骤 6: AI 记账规则归一化测试通过；（提示：本地服务器未启动或未连接，接口测试跳过：{e}）")
 
+    def test_07_edit_transaction(self):
+        """测试编辑交易记录功能"""
+        import json
+        
+        # 0. 确保已登录
+        html = self._get('/login')
+        csrf_token = self._extract_csrf(html)
+        self.assertIsNotNone(csrf_token, "无法从登录页面提取 CSRF token")
+        self._post('/login', {
+            'username': 'test_api_user',
+            'password': 'TestPassword123',
+            'csrf_token': csrf_token,
+        })
+        
+        # 1. 先新增一条交易记录用于编辑测试
+        html = self._get('/transactions')
+        csrf_token = self._extract_csrf(html)
+        self.assertIsNotNone(csrf_token)
+        
+        add_data = {
+            'type': 'expense',
+            'category': '餐饮',
+            'amount': '88.00',
+            'date': '2026-07-08',
+            'payment_method': 'WeChat',
+            'notes': '编辑功能测试原始记录',
+            'csrf_token': csrf_token,
+        }
+        response_html = self._post('/add_transaction', add_data)
+        
+        # 提取刚创建的交易记录 ID
+        match = re.search(r'/delete_transaction/(\d+)', response_html)
+        self.assertIsNotNone(match, "新增交易后未能从页面提取交易 ID")
+        # 取最后一个匹配（即最新创建的记录）
+        all_ids = re.findall(r'/delete_transaction/(\d+)', response_html)
+        edit_tx_id = all_ids[-1]
+        
+        # 2. 测试 GET /get_transaction/<id> API
+        req = urllib.request.Request(f"{BASE_URL}/get_transaction/{edit_tx_id}")
+        with urllib.request.urlopen(req) as response:
+            res_body = response.read().decode('utf-8')
+            res_json = json.loads(res_body)
+            self.assertTrue(res_json['ok'], "获取交易记录 API 未返回 ok")
+            tx = res_json['transaction']
+            self.assertEqual(tx['amount'], 88.0)
+            self.assertEqual(tx['category'], '餐饮')
+            self.assertEqual(tx['payment_method'], 'WeChat')
+        
+        # 3. 测试 POST /edit_transaction/<id> 修改记录
+        html = self._get('/transactions')
+        csrf_token = self._extract_csrf(html)
+        
+        edit_data = {
+            'type': 'expense',
+            'category': '交通',
+            'amount': '35.50',
+            'date': '2026-07-07',
+            'payment_method': 'Alipay',
+            'notes': '编辑功能测试已修改',
+            'csrf_token': csrf_token,
+        }
+        self._post(f'/edit_transaction/{edit_tx_id}', edit_data)
+        
+        # 4. 再次获取该记录验证修改生效
+        req = urllib.request.Request(f"{BASE_URL}/get_transaction/{edit_tx_id}")
+        with urllib.request.urlopen(req) as response:
+            res_body = response.read().decode('utf-8')
+            res_json = json.loads(res_body)
+            self.assertTrue(res_json['ok'])
+            tx = res_json['transaction']
+            self.assertEqual(tx['amount'], 35.5, "修改后金额不一致")
+            self.assertEqual(tx['category'], '交通', "修改后分类不一致")
+            self.assertEqual(tx['payment_method'], 'Alipay', "修改后支付方式不一致")
+            self.assertEqual(tx['date'], '2026-07-07', "修改后日期不一致")
+        
+        # 5. 清理：删除测试记录
+        html = self._get('/transactions')
+        csrf_token = self._extract_csrf(html)
+        self._post(f'/delete_transaction/{edit_tx_id}', {'csrf_token': csrf_token})
+        
+        print(f"[OK] 步骤 7: 编辑交易记录功能测试通过（创建→获取→修改→验证→清理，交易 ID: {edit_tx_id}）")
+
 if __name__ == '__main__':
     unittest.main()
