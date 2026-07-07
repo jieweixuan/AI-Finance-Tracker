@@ -326,6 +326,11 @@ let mediaRecorder = null;
 let audioChunks = [];
 let isVoiceListening = false;
 let audioStream = null;
+let speechRecognition = null;
+
+// 检测浏览器是否支持 Web Speech API
+const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+const useNativeSpeech = !!SpeechRecognition;
 
 function setVoiceButtonState(listening) {
     const button = document.getElementById('aiVoiceButton');
@@ -344,7 +349,83 @@ function setVoiceButtonState(listening) {
     }
 }
 
-async function startVoiceRecognition() {
+function toggleVoiceRecognition() {
+    if (isVoiceListening) {
+        stopVoiceRecognition();
+    } else {
+        if (useNativeSpeech) {
+            startNativeSpeechRecognition();
+        } else {
+            startRecordingFallback();
+        }
+    }
+}
+
+// ========== 方案一：浏览器原生 Web Speech API（优先） ==========
+function startNativeSpeechRecognition() {
+    speechRecognition = new SpeechRecognition();
+    speechRecognition.lang = 'zh-CN';
+    speechRecognition.interimResults = true;
+    speechRecognition.continuous = false;
+    speechRecognition.maxAlternatives = 1;
+
+    let finalTranscript = '';
+
+    speechRecognition.onstart = () => {
+        setVoiceButtonState(true);
+        setAiMessage('🎙️ 正在聆听中... 请说出您的记账内容，说完会自动停止。');
+    };
+
+    speechRecognition.onresult = (event) => {
+        let interimTranscript = '';
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+            const transcript = event.results[i][0].transcript;
+            if (event.results[i].isFinal) {
+                finalTranscript += transcript;
+            } else {
+                interimTranscript += transcript;
+            }
+        }
+        // 实时显示识别中的文字
+        document.getElementById('aiText').value = finalTranscript + interimTranscript;
+        setAiMessage('🎙️ 识别中: ' + (finalTranscript + interimTranscript));
+    };
+
+    speechRecognition.onend = () => {
+        setVoiceButtonState(false);
+        if (finalTranscript.trim()) {
+            document.getElementById('aiText').value = finalTranscript.trim();
+            setAiMessage('✅ 语音识别完成！正在使用 AI 解析记账字段...');
+            parseWithAI();
+        } else {
+            setAiMessage('未能识别出语音内容，请再试一次或手动输入。', true);
+        }
+    };
+
+    speechRecognition.onerror = (event) => {
+        setVoiceButtonState(false);
+        console.error('语音识别错误:', event.error);
+        if (event.error === 'not-allowed') {
+            setAiMessage('请在浏览器中允许使用麦克风权限。', true);
+        } else if (event.error === 'no-speech') {
+            setAiMessage('没有检测到语音，请大声说话后再试。', true);
+        } else {
+            // 原生识别失败，自动降级为录音上传
+            setAiMessage('浏览器语音识别不可用，正在切换为录音上传模式...');
+            startRecordingFallback();
+        }
+    };
+
+    try {
+        speechRecognition.start();
+    } catch (e) {
+        console.error('启动语音识别失败:', e);
+        startRecordingFallback();
+    }
+}
+
+// ========== 方案二：录音上传后端识别（降级方案） ==========
+async function startRecordingFallback() {
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         setAiMessage('当前浏览器不支持录音功能，请更换 Chrome、Edge 或使用输入法语音输入。', true);
         return;
@@ -387,7 +468,7 @@ async function startVoiceRecognition() {
 
         mediaRecorder.start();
         setVoiceButtonState(true);
-        setAiMessage('正在录音中... 请说出您的记账话语，完毕后再次点击麦克风结束。');
+        setAiMessage('🎙️ 录音中（云端模式）... 请说出您的记账话语，完毕后再次点击麦克风结束。');
     } catch (err) {
         console.error("获取麦克风失败:", err);
         setAiMessage('无法获取麦克风权限，请在浏览器中允许使用麦克风。', true);
@@ -396,18 +477,16 @@ async function startVoiceRecognition() {
 }
 
 function stopVoiceRecognition() {
+    // 停止原生语音识别
+    if (speechRecognition) {
+        try { speechRecognition.stop(); } catch(e) {}
+        speechRecognition = null;
+    }
+    // 停止录音（降级模式）
     if (mediaRecorder && mediaRecorder.state !== "inactive") {
         mediaRecorder.stop();
     }
     setVoiceButtonState(false);
-}
-
-function toggleVoiceRecognition() {
-    if (isVoiceListening) {
-        stopVoiceRecognition();
-    } else {
-        startVoiceRecognition();
-    }
 }
 
 function uploadAudioAndRecognize(audioBlob, mimeType) {
@@ -425,7 +504,7 @@ function uploadAudioAndRecognize(audioBlob, mimeType) {
     .then(result => {
         if (result.ok) {
             document.getElementById('aiText').value = result.text;
-            setAiMessage('语音转文字成功！正在使用 AI 解析记账字段...');
+            setAiMessage('✅ 语音转文字成功！正在使用 AI 解析记账字段...');
             parseWithAI();
         } else {
             setAiMessage(result.error || '语音识别失败，请重试或手动输入。', true);

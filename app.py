@@ -944,6 +944,7 @@ def ai_monthly_summary():
 
 @app.route('/ai/voice_to_text', methods=['POST'])
 def ai_voice_to_text():
+    """语音转文字接口 —— 使用 SiliconFlow SenseVoice 模型（兼容 OpenAI /audio/transcriptions 格式）"""
     if not is_logged_in():
         return jsonify({'ok': False, 'error': '请先登录后再使用语音功能。'}), 401
 
@@ -951,38 +952,71 @@ def ai_voice_to_text():
     if not audio_file:
         return jsonify({'ok': False, 'error': '没有检测到录音数据。'}), 400
 
-    hf_token = (os.environ.get('HUGGINGFACE_API_TOKEN') or '').strip()
-    if not hf_token:
-        return jsonify({'ok': False, 'error': '服务器未配置 HUGGINGFACE_API_TOKEN。'}), 500
+    # 支持多种 API Key 配置来源
+    stt_api_key = (
+        os.environ.get('SILICONFLOW_API_KEY')
+        or os.environ.get('STT_API_KEY')
+        or ''
+    ).strip()
+    stt_base_url = (
+        os.environ.get('SILICONFLOW_BASE_URL')
+        or os.environ.get('STT_BASE_URL')
+        or 'https://api.siliconflow.cn/v1'
+    ).strip().rstrip('/')
+    stt_model = (
+        os.environ.get('SILICONFLOW_STT_MODEL')
+        or os.environ.get('STT_MODEL')
+        or 'FunAudioLLM/SenseVoiceSmall'
+    ).strip()
 
-    API_URL = "https://api-inference.huggingface.co/models/openai/whisper-large-v3"
+    if not stt_api_key:
+        return jsonify({'ok': False, 'error': '服务器未配置语音识别 API Key（SILICONFLOW_API_KEY）。'}), 500
+
+    # 构建 multipart/form-data 请求体（兼容 OpenAI /audio/transcriptions 格式）
+    audio_data = audio_file.read()
+    boundary = secrets.token_hex(16)
+    body = b''
+    # file 字段
+    body += f'--{boundary}\r\n'.encode()
+    body += f'Content-Disposition: form-data; name="file"; filename="audio.webm"\r\n'.encode()
+    body += b'Content-Type: audio/webm\r\n\r\n'
+    body += audio_data
+    body += b'\r\n'
+    # model 字段
+    body += f'--{boundary}\r\n'.encode()
+    body += f'Content-Disposition: form-data; name="model"\r\n\r\n'.encode()
+    body += stt_model.encode()
+    body += b'\r\n'
+    body += f'--{boundary}--\r\n'.encode()
+
+    api_url = f'{stt_base_url}/audio/transcriptions'
     req = urllib.request.Request(
-        API_URL,
-        data=audio_file.read(),
+        api_url,
+        data=body,
         headers={
-            'Authorization': f"Bearer {hf_token}",
-            'Content-Type': 'audio/wav'
+            'Authorization': f'Bearer {stt_api_key}',
+            'Content-Type': f'multipart/form-data; boundary={boundary}',
         },
-        method='POST'
+        method='POST',
     )
 
     try:
-        # 设置较大的超时，防 Hugging Face 服务器冷启动
         with urllib.request.urlopen(req, timeout=30) as response:
-            body = response.read().decode('utf-8')
-            result = json.loads(body)
+            result = json.loads(response.read().decode('utf-8'))
             transcribed_text = result.get('text', '').strip()
             if not transcribed_text:
                 return jsonify({'ok': False, 'error': '未能识别出语音，请大声且清晰地说话。'}), 200
             return jsonify({'ok': True, 'text': transcribed_text})
     except urllib.error.HTTPError as exc:
         try:
-            err_detail = json.loads(exc.read().decode('utf-8')).get('error', f'HTTP {exc.code}')
+            err_detail = json.loads(exc.read().decode('utf-8')).get('error', {})
+            if isinstance(err_detail, dict):
+                err_detail = err_detail.get('message', f'HTTP {exc.code}')
         except Exception:
             err_detail = f'HTTP {exc.code}'
-        return jsonify({'ok': False, 'error': f"语音识别接口错误: {err_detail}"}), 500
+        return jsonify({'ok': False, 'error': f'语音识别接口错误: {err_detail}'}), 500
     except Exception as e:
-        return jsonify({'ok': False, 'error': f"语音识别请求失败: {str(e)}"}), 500
+        return jsonify({'ok': False, 'error': f'语音识别请求失败: {str(e)}'}), 500
 
 
 if __name__ == '__main__':
