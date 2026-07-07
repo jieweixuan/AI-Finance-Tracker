@@ -1,0 +1,484 @@
+{% extends 'base.html' %}
+
+{% block title %}
+交易记录 - AI收支管理系统
+{% endblock %}
+
+{% block content %}
+<style>
+    .popup {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(30, 41, 59, 0.4) !important;
+        backdrop-filter: blur(10px);
+        z-index: 9999;
+    }
+
+    .popup-content {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background: rgba(255, 255, 255, 0.95) !important;
+        border: 1px solid #ffffff !important;
+        padding: 30px !important;
+        border-radius: 24px !important;
+        box-shadow: 0 25px 60px rgba(148, 163, 184, 0.3) !important;
+        width: min(560px, 92vw);
+        max-height: 92vh;
+        overflow-y: auto;
+        color: #1e293b !important;
+    }
+
+    .close {
+        position: absolute;
+        top: 20px;
+        right: 25px;
+        cursor: pointer;
+        font-size: 1.8rem;
+        color: #64748b;
+        transition: color 0.2s;
+    }
+    .close:hover {
+        color: #f43f5e;
+    }
+</style>
+
+<div class="row mt-2 align-items-center mb-4">
+    <div class="col-md-6">
+        <h2 class="fw-bold mb-0">日常交易流水 <span class="badge bg-primary fs-6 ms-2" style="background: linear-gradient(135deg, #2563eb, #7c3aed) !important;">明细</span></h2>
+        <p class="text-secondary mb-0 mt-1">轻松追踪每一笔收支，智能 AI 辅助帮您高效记账。</p>
+    </div>
+    <div class="col-md-6 text-end mt-3 mt-md-0">
+        <button class="btn btn-primary me-2 shadow-sm" onclick="openPopup()"><i class="fa-solid fa-plus me-2"></i>新增交易</button>
+        <button class="btn btn-success shadow-sm" onclick="downloadCSV()"><i class="fa-solid fa-file-arrow-down me-2"></i>导出 CSV</button>
+    </div>
+</div>
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}
+    <div class="mb-4">
+      {% for category, message in messages %}
+        <div class="alert alert-{{ 'danger' if category == 'error' else category }}">{{ message }}</div>
+      {% endfor %}
+    </div>
+  {% endif %}
+{% endwith %}
+
+<!-- AI 记账助手 -->
+<div class="card mb-4" style="border-color: rgba(37, 99, 235, 0.3) !important; box-shadow: 0 15px 35px rgba(37, 99, 235, 0.08) !important;">
+    <div class="card-header d-flex align-items-center">
+        <i class="fa-solid fa-robot me-2 fs-5 text-primary"></i>AI 智能记账助手 (DeepSeek 驱动)
+    </div>
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-md-9">
+                <div class="input-group">
+                    <span class="input-group-text bg-transparent border-end-0 text-primary" style="border-color: #cbd5e1;"><i class="fa-solid fa-comment-dots"></i></span>
+                    <input type="text" id="aiText" class="form-control border-start-0 border-end-0 ps-0" placeholder="自然语言输入，如：‘打车去公司花了35.5元’或‘收到发小转账借款2000元’">
+                    <button type="button" class="btn btn-outline-primary" id="aiVoiceButton" onclick="toggleVoiceRecognition()" title="语音识别" aria-label="语音识别" style="border-color: #cbd5e1; min-width: 46px;">
+                        <i id="aiVoiceIcon" class="fa-solid fa-microphone"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="col-md-3 d-grid">
+                <button class="btn btn-primary" id="aiParseButton" onclick="parseWithAI()"><i class="fa-solid fa-wand-magic-sparkles me-2"></i>一键识别</button>
+            </div>
+        </div>
+        <div id="aiMessage" class="form-text mt-2" style="color: #64748b;"><i class="fa-solid fa-circle-info me-1 text-primary"></i>AI 识别后会自动精准填入新增交易表单，供您确认后再保存。</div>
+    </div>
+</div>
+
+<!-- 分类筛选 -->
+<form class="card mb-4" method="get" action="{{ url_for('transactions') }}">
+    <div class="card-header d-flex align-items-center">
+        <i class="fa-solid fa-filter me-2 text-primary"></i>多条件筛选
+    </div>
+    <div class="card-body">
+        <div class="row g-3 align-items-end">
+            <div class="col-md-2">
+                <label for="filterType" class="form-label">收支类型</label>
+                <select id="filterType" name="type" class="form-select">
+                    <option value="">全部</option>
+                    {% for value, label in transaction_types.items() %}
+                    <option value="{{ value }}" {% if filters.type == value %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label for="filterCategory" class="form-label">消费分类</label>
+                <select id="filterCategory" name="category" class="form-select" data-selected="{{ filters.category }}">
+                    <option value="">全部</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label for="startDate" class="form-label">起始日期</label>
+                <input type="date" id="startDate" name="start_date" value="{{ filters.start_date }}" class="form-control">
+            </div>
+            <div class="col-md-2">
+                <label for="endDate" class="form-label">结束日期</label>
+                <input type="date" id="endDate" name="end_date" value="{{ filters.end_date }}" class="form-control">
+            </div>
+            <div class="col-md-3 d-flex gap-2">
+                <button type="submit" class="btn btn-primary flex-grow-1"><i class="fa-solid fa-magnifying-glass me-1"></i>筛选</button>
+                <a href="{{ url_for('transactions') }}" class="btn btn-outline-secondary"><i class="fa-solid fa-rotate-right"></i></a>
+            </div>
+        </div>
+    </div>
+</form>
+
+<!-- 交易数据表格 -->
+<div class="table-responsive">
+    <table class="table table-striped" id="transactionsTable">
+        <thead>
+            <tr>
+                <th>日期</th>
+                <th>类型</th>
+                <th>分类</th>
+                <th>金额 (¥)</th>
+                <th>支付方式</th>
+                <th>备注说明</th>
+                <th class="text-center">操作</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for transaction in transactions %}
+            <tr>
+                <td class="fw-medium">{{ transaction.date }}</td>
+                <td>
+                    {% if transaction.type == 'income' %}
+                    <span class="badge" style="background: rgba(16, 185, 129, 0.15); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.3);"><i class="fa-solid fa-arrow-down-long me-1"></i>{{ transaction.type|zh_type }}</span>
+                    {% else %}
+                    <span class="badge" style="background: rgba(244, 63, 94, 0.15); color: #f43f5e; border: 1px solid rgba(244, 63, 94, 0.3);"><i class="fa-solid fa-arrow-up-long me-1"></i>{{ transaction.type|zh_type }}</span>
+                    {% endif %}
+                </td>
+                <td><span class="fw-semibold text-primary">{{ transaction.category|zh_category }}</span></td>
+                <td class="fw-bold {% if transaction.type == 'income' %}text-success{% else %}text-danger{% endif %}" style="font-size: 1.05rem;">
+                    {% if transaction.type == 'income' %}+{% else %}-{% endif %}¥{{ transaction.amount }}
+                </td>
+                <td><span class="text-secondary"><i class="fa-solid fa-credit-card me-1 text-primary"></i>{{ transaction.payment_method|zh_payment_method }}</span></td>
+                <td>{{ transaction.description or '-' }}</td>
+                <td class="text-center">
+                    <form action="{{ url_for('delete_transaction', transaction_id=transaction.id) }}" method="post" class="d-inline">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button type="submit" class="btn btn-danger btn-sm px-3" onclick="return confirm('确定要删除这笔记录吗？')" title="删除记录"><i class="fas fa-trash-alt"></i></button>
+                    </form>
+                </td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="7" class="text-center py-5 text-secondary">
+                    <i class="fa-solid fa-box-open fs-2 mb-3 d-block"></i>
+                    当前没有任何交易记录，快点击右上角“新增交易”或使用 AI 助手记一笔吧！
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<!-- 新增交易模态框 -->
+<div id="popup" class="popup">
+    <div class="popup-content">
+        <span class="close" onclick="closePopup()">&times;</span>
+        <h4 class="mb-4 fw-bold gradient-text"><i class="fa-solid fa-pen-to-square me-2"></i>记录新笔收支</h4>
+        <form action="{{ url_for('add_transaction') }}" method="post">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="row g-3">
+                <div class="col-md-6 mb-3">
+                    <label for="type" class="form-label">收支类型</label>
+                    <select id="type" name="type" class="form-select" required>
+                        {% for value, label in transaction_types.items() %}
+                        <option value="{{ value }}">{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label for="date" class="form-label">交易日期</label>
+                    <input type="date" id="date" name="date" class="form-control" required>
+                </div>
+            </div>
+            <div class="row g-3">
+                <div class="col-md-6 mb-3">
+                    <label for="category" class="form-label">所属分类</label>
+                    <select id="category" name="category" class="form-select" required></select>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label for="amount" class="form-label">交易金额 (¥)</label>
+                    <input type="number" step="0.01" min="0.01" id="amount" name="amount" class="form-control" placeholder="0.00" required>
+                </div>
+            </div>
+            <div class="mb-3">
+                <label for="payment_method" class="form-label">支付方式</label>
+                <select id="payment_method" name="payment_method" class="form-select" required>
+                    {% for value, label in payment_method_labels.items() %}
+                    <option value="{{ value }}">{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="mb-4">
+                <label for="notes" class="form-label">备注说明</label>
+                <textarea id="notes" name="notes" class="form-control" rows="3" placeholder="填写简单的备注或去向说明..."></textarea>
+            </div>
+            <div class="d-grid">
+                <button type="submit" class="btn btn-primary py-3 fs-6"><i class="fa-solid fa-check me-2"></i>立即保存</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+const categoryOptions = {{ category_options|tojson }};
+
+function fillCategorySelect(selectEl, typeValue, selectedValue = '') {
+    const types = typeValue ? [typeValue] : Object.keys(categoryOptions);
+    selectEl.textContent = '';
+    const allOption = document.createElement('option');
+    allOption.value = '';
+    allOption.textContent = '全部';
+    selectEl.appendChild(allOption);
+    types.forEach(type => {
+        categoryOptions[type].forEach(category => {
+            const option = document.createElement('option');
+            option.value = category;
+            option.textContent = category;
+            if (category === selectedValue) {
+                option.selected = true;
+            }
+            selectEl.appendChild(option);
+        });
+    });
+}
+
+function fillFormCategorySelect(selectedValue = '') {
+    const typeValue = document.getElementById('type').value;
+    const categorySelect = document.getElementById('category');
+    categorySelect.textContent = '';
+    categoryOptions[typeValue].forEach(category => {
+        const option = document.createElement('option');
+        option.value = category;
+        option.textContent = category;
+        if (category === selectedValue) {
+            option.selected = true;
+        }
+        categorySelect.appendChild(option);
+    });
+}
+
+function openPopup() {
+    document.getElementById('popup').style.display = 'block';
+    if (!document.getElementById('date').value) {
+        document.getElementById('date').value = new Date().toISOString().slice(0, 10);
+    }
+}
+
+function closePopup() {
+    document.getElementById('popup').style.display = 'none';
+}
+
+function setAiMessage(text, isError = false) {
+    const message = document.getElementById('aiMessage');
+    message.textContent = text;
+    message.className = isError ? 'text-danger mt-2' : 'form-text mt-2';
+    if(isError) message.style.color = '#f43f5e';
+    else message.style.color = '#2563eb';
+}
+
+let mediaRecorder = null;
+let audioChunks = [];
+let isVoiceListening = false;
+let audioStream = null;
+
+function setVoiceButtonState(listening) {
+    const button = document.getElementById('aiVoiceButton');
+    const icon = document.getElementById('aiVoiceIcon');
+    const parseButton = document.getElementById('aiParseButton');
+    if (!button || !icon) return;
+
+    isVoiceListening = listening;
+    button.className = listening ? 'btn btn-danger shadow-sm' : 'btn btn-outline-primary';
+    button.title = listening ? '停止录音并识别' : '开始语音记账';
+    button.setAttribute('aria-label', button.title);
+    icon.className = listening ? 'fa-solid fa-stop-circle fa-beat text-white' : 'fa-solid fa-microphone';
+
+    if (parseButton) {
+        parseButton.disabled = listening;
+    }
+}
+
+async function startVoiceRecognition() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        setAiMessage('当前浏览器不支持录音功能，请更换 Chrome、Edge 或使用输入法语音输入。', true);
+        return;
+    }
+
+    try {
+        audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        
+        let options = {};
+        if (MediaRecorder.isTypeSupported('audio/webm')) {
+            options = { mimeType: 'audio/webm' };
+        } else if (MediaRecorder.isTypeSupported('audio/mp4')) {
+            options = { mimeType: 'audio/mp4' };
+        }
+        
+        mediaRecorder = new MediaRecorder(audioStream, options);
+        audioChunks = [];
+
+        mediaRecorder.addEventListener("dataavailable", event => {
+            if (event.data.size > 0) {
+                audioChunks.push(event.data);
+            }
+        });
+
+        mediaRecorder.addEventListener("stop", () => {
+            const mimeType = mediaRecorder.mimeType || 'audio/wav';
+            const audioBlob = new Blob(audioChunks, { type: mimeType });
+            
+            if (audioBlob.size > 1000) {
+                uploadAudioAndRecognize(audioBlob, mimeType);
+            } else {
+                setAiMessage('录音时间太短，请再试一次。', true);
+            }
+            
+            if (audioStream) {
+                audioStream.getTracks().forEach(track => track.stop());
+                audioStream = null;
+            }
+        });
+
+        mediaRecorder.start();
+        setVoiceButtonState(true);
+        setAiMessage('正在录音中... 请说出您的记账话语，完毕后再次点击麦克风结束。');
+    } catch (err) {
+        console.error("获取麦克风失败:", err);
+        setAiMessage('无法获取麦克风权限，请在浏览器中允许使用麦克风。', true);
+        setVoiceButtonState(false);
+    }
+}
+
+function stopVoiceRecognition() {
+    if (mediaRecorder && mediaRecorder.state !== "inactive") {
+        mediaRecorder.stop();
+    }
+    setVoiceButtonState(false);
+}
+
+function toggleVoiceRecognition() {
+    if (isVoiceListening) {
+        stopVoiceRecognition();
+    } else {
+        startVoiceRecognition();
+    }
+}
+
+function uploadAudioAndRecognize(audioBlob, mimeType) {
+    setAiMessage('正在将音频上传至云端识别中，请稍候...');
+    
+    const formData = new FormData();
+    formData.append("audio", audioBlob, "voice_input.bin");
+    formData.append("csrf_token", "{{ csrf_token() }}");
+
+    fetch('/ai/voice_to_text', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(result => {
+        if (result.ok) {
+            document.getElementById('aiText').value = result.text;
+            setAiMessage('语音转文字成功！正在使用 AI 解析记账字段...');
+            parseWithAI();
+        } else {
+            setAiMessage(result.error || '语音识别失败，请重试或手动输入。', true);
+        }
+    })
+    .catch(error => {
+        console.error("上传识别失败:", error);
+        setAiMessage('上传语音失败，网络连接异常。', true);
+    });
+}
+
+function parseWithAI() {
+    const text = document.getElementById('aiText').value.trim();
+    const button = document.getElementById('aiParseButton');
+    if (!text) {
+        setAiMessage('请输入一段记账描述。', true);
+        return;
+    }
+    button.disabled = true;
+    button.innerHTML = '<i class="fa-solid fa-spinner fa-spin me-2"></i>识别中...';
+    setAiMessage('正在呼叫 DeepSeek AI 引擎解析，请稍候...');
+
+    fetch('/ai/parse_transaction', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({text})
+    })
+        .then(response => response.json())
+        .then(result => {
+            if (!result.ok) {
+                setAiMessage(result.error || 'AI 识别失败，请手动填写。', true);
+                openPopup();
+                return;
+            }
+            const tx = result.transaction;
+            document.getElementById('type').value = tx.type;
+            fillFormCategorySelect(tx.category);
+            document.getElementById('date').value = tx.date;
+            document.getElementById('amount').value = tx.amount;
+            document.getElementById('payment_method').value = tx.payment_method;
+            document.getElementById('notes').value = tx.description;
+            openPopup();
+            setAiMessage('🎉 AI 已成功识别并帮您填写完表单，请确认无误后点击保存！');
+        })
+        .catch(() => {
+            setAiMessage('AI 请求失败，请检查服务网络或手动填写。', true);
+            openPopup();
+        })
+        .finally(() => {
+            button.disabled = false;
+            button.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles me-2"></i>一键识别';
+        });
+}
+
+function downloadCSV() {
+    const rows = document.querySelectorAll('#transactionsTable tbody tr');
+    if (rows.length === 0 || rows[0].innerText.includes('当前没有任何交易记录')) {
+        alert('当前没有可导出的数据！');
+        return;
+    }
+    let csvContent = '日期,类型,分类,金额,支付方式,备注\n';
+    rows.forEach(row => {
+        const columns = row.querySelectorAll('td');
+        if(columns.length < 6) return;
+        const rowData = Array.from(columns)
+            .slice(0, 6)
+            .map(column => '"' + column.textContent.trim().replace(/\n/g, '').replace('¥', '').replace('+', '').replace('-', '').replace(/"/g, '""') + '"');
+        csvContent += rowData.join(',') + '\n';
+    });
+
+    const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const a = document.createElement('a');
+    a.href = window.URL.createObjectURL(blob);
+    a.download = 'AI收支管理系统_交易明细_' + new Date().toISOString().slice(0, 10) + '.csv';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    const filterType = document.getElementById('filterType');
+    const filterCategory = document.getElementById('filterCategory');
+    fillCategorySelect(filterCategory, filterType.value, filterCategory.dataset.selected);
+    filterType.addEventListener('change', () => fillCategorySelect(filterCategory, filterType.value));
+
+    fillFormCategorySelect();
+    document.getElementById('type').addEventListener('change', () => fillFormCategorySelect());
+});
+</script>
+{% endblock %}

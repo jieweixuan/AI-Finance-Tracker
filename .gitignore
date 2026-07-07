@@ -1,0 +1,15 @@
+.venv/
+__pycache__/
+*.py[cod]
+
+finance_tracker.db
+*.sqlite
+*.sqlite3
+
+.env
+.env.*
+!.env.example
+
+*.log
+.vercel/
+.netlify/

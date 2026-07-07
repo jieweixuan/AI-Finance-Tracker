@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>免费注册 - AI收支管理系统</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/glassmorphism.css') }}">
+    <style>
+        body {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0;
+            padding: 24px;
+            box-sizing: border-box;
+        }
+        /* 现代极简分屏展盒 */
+        .auth-split-box {
+            width: 100%;
+            max-width: 1000px;
+            min-height: 600px;
+            background: rgba(255, 255, 255, 0.75);
+            backdrop-filter: blur(35px) saturate(200%);
+            -webkit-backdrop-filter: blur(35px) saturate(200%);
+            border: 1px solid rgba(255, 255, 255, 0.95);
+            border-radius: 32px;
+            box-shadow: 0 30px 80px rgba(148, 163, 184, 0.15);
+            overflow: hidden;
+            display: flex;
+            flex-direction: row;
+        }
+        @media (max-width: 768px) {
+            .auth-split-box { flex-direction: column; min-height: auto; }
+        }
+        /* 左侧：企业级品牌宣传面板 */
+        .auth-brand-side {
+            flex: 1;
+            background: linear-gradient(135deg, #06b6d4 0%, #3b82f6 50%, #6366f1 100%);
+            color: #ffffff;
+            padding: 4rem 3rem;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            position: relative;
+            overflow: hidden;
+        }
+        .auth-brand-side::before {
+            content: '';
+            position: absolute;
+            top: -15%;
+            left: -15%;
+            width: 320px;
+            height: 320px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 50%;
+            filter: blur(45px);
+        }
+        .auth-brand-side::after {
+            content: '';
+            position: absolute;
+            bottom: -10%;
+            right: -10%;
+            width: 280px;
+            height: 280px;
+            background: rgba(236, 72, 153, 0.25);
+            border-radius: 50%;
+            filter: blur(55px);
+        }
+        .brand-content { position: relative; z-index: 2; }
+        .brand-badge {
+            display: inline-flex;
+            align-items: center;
+            background: rgba(255, 255, 255, 0.16);
+            backdrop-filter: blur(10px);
+            padding: 0.45rem 1.1rem;
+            border-radius: 50px;
+            font-size: 0.85rem;
+            font-weight: 500;
+            letter-spacing: 0.5px;
+            border: 1px solid rgba(255, 255, 255, 0.28);
+            margin-bottom: 2.5rem;
+        }
+        .brand-title {
+            font-size: 2.4rem;
+            font-weight: 700;
+            line-height: 1.3;
+            margin-bottom: 1.2rem;
+            letter-spacing: -0.5px;
+        }
+        .brand-subtitle {
+            font-size: 1rem;
+            color: rgba(255, 255, 255, 0.85);
+            font-weight: 300;
+            line-height: 1.6;
+        }
+        /* 浮动 AI 识账对话预览卡片 */
+        .preview-card {
+            background: rgba(255, 255, 255, 0.16);
+            backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.26);
+            border-radius: 20px;
+            padding: 1.4rem;
+            position: relative;
+            z-index: 2;
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.05);
+            transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+            margin-top: 2rem;
+        }
+        .preview-card:hover { transform: translateY(-5px); }
+        
+        /* 右侧：极简白净表单 */
+        .auth-form-side {
+            flex: 1.1;
+            background: rgba(255, 255, 255, 0.9);
+            padding: 3.5rem 4rem;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            position: relative;
+        }
+        @media (max-width: 576px) {
+            .auth-form-side, .auth-brand-side { padding: 2.5rem 1.8rem; }
+        }
+        .form-title {
+            font-size: 1.85rem;
+            font-weight: 700;
+            color: #0f172a;
+            letter-spacing: -0.5px;
+            margin-bottom: 0.3rem;
+            text-align: center;
+        }
+        .form-subtitle {
+            color: #64748b;
+            font-size: 0.95rem;
+            margin-bottom: 1.8rem;
+            text-align: center;
+        }
+        .custom-input-group { margin-bottom: 1.2rem; }
+        .custom-label {
+            font-size: 0.88rem;
+            font-weight: 600;
+            color: #334155;
+            margin-bottom: 0.4rem;
+            display: block;
+        }
+
+        /* 密码包装器与显示按钮 */
+        .password-wrapper {
+            position: relative;
+            display: flex;
+            align-items: center;
+        }
+        .password-wrapper .custom-input {
+            padding-right: 3rem;
+        }
+        .password-toggle {
+            position: absolute;
+            right: 0.85rem;
+            background: none !important;
+            border: none !important;
+            color: #64748b;
+            cursor: pointer;
+            padding: 0.4rem;
+            font-size: 1.1rem;
+            transition: color 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 5;
+        }
+        .password-toggle:hover {
+            color: #2563eb;
+        }
+
+        .custom-input {
+            width: 100%;
+            height: 48px;
+            padding: 0 1.25rem;
+            border-radius: 12px;
+            border: 1px solid #cbd5e1;
+            background: #f8fafc;
+            color: #0f172a;
+            font-size: 0.95rem;
+            transition: all 0.25s ease;
+        }
+        .custom-input:focus {
+            background: #ffffff;
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.12);
+            outline: none;
+        }
+        .custom-input::placeholder { color: #94a3b8; }
+        
+        /* 注册按钮居中设计 */
+        .btn-container {
+            display: flex;
+            justify-content: center;
+            margin-top: 1.8rem;
+        }
+        .submit-btn {
+            width: 100%;
+            max-width: 280px;
+            height: 48px;
+            border-radius: 12px;
+            background: #0f172a;
+            color: #ffffff;
+            font-weight: 600;
+            font-size: 0.98rem;
+            border: none;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+            box-shadow: 0 8px 20px rgba(15, 23, 42, 0.15);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+        .submit-btn:hover {
+            background: #2563eb;
+            box-shadow: 0 12px 25px rgba(37, 99, 235, 0.28);
+            transform: translateY(-2px);
+        }
+
+        /* 企业级登录通道分割线与按钮设计 */
+        .auth-divider {
+            display: flex;
+            align-items: center;
+            text-align: center;
+            margin: 2rem 0 1.2rem 0;
+            color: #94a3b8;
+            font-size: 0.82rem;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .auth-divider::before, .auth-divider::after {
+            content: '';
+            flex: 1;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        .auth-divider:not(:empty)::before { margin-right: .75em; }
+        .auth-divider:not(:empty)::after { margin-left: .75em; }
+
+        .login-btn {
+            width: 100%;
+            height: 46px;
+            border-radius: 12px;
+            border: 1px solid #cbd5e1 !important;
+            background: #ffffff !important;
+            color: #475569 !important;
+            font-weight: 600;
+            font-size: 0.95rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            text-decoration: none;
+            transition: all 0.25s ease;
+            box-shadow: 0 2px 6px rgba(148, 163, 184, 0.05);
+        }
+        .login-btn:hover {
+            background: #f8fafc !important;
+            border-color: #94a3b8 !important;
+            color: #0f172a !important;
+            transform: translateY(-1px);
+        }
+    </style>
+</head>
+<body>
+    <!-- 动态分散浅色液态光球背景 -->
+    <div class="liquid-background">
+        <div class="orb orb-1"></div>
+        <div class="orb orb-2"></div>
+        <div class="orb orb-3"></div>
+        <div class="orb orb-4"></div>
+    </div>
+
+    <div class="auth-split-box">
+        <!-- 左侧：品牌展示与 AI 识账预览 -->
+        <div class="auth-brand-side">
+            <div class="brand-content">
+                <div class="brand-badge">
+                    <i class="fa-solid fa-robot me-2 text-warning"></i>DeepSeek Powered
+                </div>
+                <h1 class="brand-title">一句话，<br>搞定财务记账。</h1>
+                <p class="brand-subtitle">再也不用在繁琐的表单中手动点选分类，输入自然口语，AI 为您全自动解析归纳。</p>
+            </div>
+
+            <!-- 浮动 AI 识账胶囊卡片 -->
+            <div class="preview-card">
+                <div class="d-flex align-items-center mb-3">
+                    <div class="p-2 rounded-circle bg-white text-primary me-3 d-flex align-items-center justify-content-center flex-shrink-0" style="width: 40px; height: 40px; box-shadow: 0 4px 10px rgba(0,0,0,0.1);">
+                        <i class="fa-solid fa-wand-magic-sparkles fs-6"></i>
+                    </div>
+                    <div>
+                        <div class="fw-bold" style="font-size: 0.92rem;">“晚上和朋友吃火锅花了320元”</div>
+                        <div style="font-size: 0.75rem; opacity: 0.8;"><i class="fa-solid fa-check-circle me-1 text-warning"></i>AI 引擎已实时识别并分类</div>
+                    </div>
+                </div>
+                <div class="d-flex justify-content-between align-items-center pt-2 border-top border-light border-opacity-25">
+                    <span class="badge bg-white text-dark fw-semibold px-3 py-1" style="font-size: 0.78rem;">📌 餐饮消费</span>
+                    <span class="fw-bold text-white fs-6">-¥320.00</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- 右侧：极简现代注册表单 -->
+        <div class="auth-form-side">
+            <div class="form-title">创建您的账号</div>
+            <div class="form-subtitle">只需几步，开启全新智能财税管理</div>
+
+            {% with messages = get_flashed_messages(with_categories=true) %}
+              {% if messages %}
+                {% for category, message in messages %}
+                  <div class="alert alert-{{ 'danger' if category == 'error' else category }} mb-3" style="border-radius: 12px; font-size: 0.88rem;">{{ message }}</div>
+                {% endfor %}
+              {% endif %}
+            {% endwith %}
+
+            <form action="{{ url_for('register') }}" method="post">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="email" value="user@example.com">
+                <input type="hidden" name="phone" value="13800000000">
+                
+                <div class="custom-input-group">
+                    <label for="username" class="custom-label">用户名</label>
+                    <input type="text" id="username" name="username" class="custom-input" placeholder="设置您的独特登录名" required autocomplete="username">
+                </div>
+
+                <div class="custom-input-group">
+                    <label for="password" class="custom-label">登录密码</label>
+                    <div class="password-wrapper">
+                        <input type="password" id="password" name="password" class="custom-input" placeholder="至少6位安全密码" required autocomplete="new-password">
+                        <button type="button" class="password-toggle" id="passwordToggle" title="显示/隐藏密码">
+                            <i class="fa-regular fa-eye" id="passwordIcon"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="custom-input-group">
+                    <label for="confirm_password" class="custom-label">确认密码</label>
+                    <div class="password-wrapper">
+                        <input type="password" id="confirm_password" name="confirm_password" class="custom-input" placeholder="再次确认您的密码" required autocomplete="new-password">
+                        <button type="button" class="password-toggle" id="confirmPasswordToggle" title="显示/隐藏密码">
+                            <i class="fa-regular fa-eye" id="confirmPasswordIcon"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 居中的注册按钮 -->
+                <div class="btn-container">
+                    <button type="submit" class="submit-btn">
+                        <span>立即免费注册</span><i class="fa-solid fa-user-plus ms-1"></i>
+                    </button>
+                </div>
+            </form>
+
+            <!-- 企业级登录切换通道 -->
+            <div class="auth-divider">已有账号？</div>
+            
+            <a href="{{ url_for('login') }}" class="login-btn">
+                <i class="fa-solid fa-arrow-right-to-bracket text-primary"></i>
+                <span>直接登录</span>
+            </a>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // 密码显示/隐藏切换脚本
+        document.addEventListener('DOMContentLoaded', function() {
+            // 主密码框
+            const passwordInput = document.getElementById('password');
+            const passwordToggle = document.getElementById('passwordToggle');
+            const passwordIcon = document.getElementById('passwordIcon');
+
+            passwordToggle.addEventListener('click', function() {
+                if (passwordInput.type === 'password') {
+                    passwordInput.type = 'text';
+                    passwordIcon.classList.remove('fa-eye');
+                    passwordIcon.classList.add('fa-eye-slash');
+                } else {
+                    passwordInput.type = 'password';
+                    passwordIcon.classList.remove('fa-eye-slash');
+                    passwordIcon.classList.add('fa-eye');
+                }
+            });
+
+            // 确认密码框
+            const confirmInput = document.getElementById('confirm_password');
+            const confirmToggle = document.getElementById('confirmPasswordToggle');
+            const confirmIcon = document.getElementById('confirmPasswordIcon');
+
+            confirmToggle.addEventListener('click', function() {
+                if (confirmInput.type === 'password') {
+                    confirmInput.type = 'text';
+                    confirmIcon.classList.remove('fa-eye');
+                    confirmIcon.classList.add('fa-eye-slash');
+                } else {
+                    confirmInput.type = 'password';
+                    confirmIcon.classList.remove('fa-eye-slash');
+                    confirmIcon.classList.add('fa-eye');
+                }
+            });
+        });
+    </script>
+</body>
+</html>
