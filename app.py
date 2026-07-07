@@ -13,6 +13,25 @@ import mimetypes
 mimetypes.add_type('text/css', '.css')
 mimetypes.add_type('application/javascript', '.js')
 
+# 自动加载项目根目录下的 .env 文件至环境变量（零第三方依赖，确保 PythonAnywhere / WSGI 环境自动生效）
+def _load_env_file():
+    env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.env')
+    if os.path.exists(env_path):
+        try:
+            with open(env_path, 'r', encoding='utf-8') as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith('#') and '=' in line:
+                        key, val = line.split('=', 1)
+                        key = key.strip()
+                        val = val.strip().strip("'").strip('"').rstrip(';；')
+                        if key and key not in os.environ:
+                            os.environ[key] = val
+        except Exception as e:
+            print(f"加载 .env 文件警告: {e}")
+
+_load_env_file()
+
 from flask import Flask, flash, jsonify, redirect, render_template, request, session, url_for
 from werkzeug.security import check_password_hash, generate_password_hash
 
